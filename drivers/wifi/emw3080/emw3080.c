@@ -59,3 +59,27 @@ int emw3080_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_cb_t 
 
 	return ret;
 }
+
+int emw3080_get_mac_address(const struct device *dev, uint8_t mac[6])
+{
+	int ret;
+
+	if (dev == NULL || mac == NULL) {
+		return -EINVAL;
+	}
+
+	if (!device_is_ready(dev)) {
+		return -ENODEV;
+	}
+
+	ret = emw3080_transport_lock(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = emw3080_mipc_get_mac_address(dev, mac);
+
+	emw3080_transport_unlock(dev);
+
+	return ret;
+}

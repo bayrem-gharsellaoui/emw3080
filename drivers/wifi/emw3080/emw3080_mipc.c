@@ -19,6 +19,9 @@ LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 #define MIPC_SCAN_BUFFER_SIZE 2500
 #define MIPC_SCAN_AP_SIZE     48
 
+#define MIPC_GET_MAC_TIMEOUT_MS 2000
+#define MIPC_MAC_SIZE           6
+
 int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, size_t size)
 {
 	/* Request ID = 1, command ID = 0x0003 */
@@ -96,7 +99,8 @@ int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_
 		struct emw3080_ap_info ap = {0};
 
 		ap.rssi = (int32_t)sys_get_le32(record);
-		memcpy(ap.ssid, record + 4, 33);
+		memcpy(ap.ssid, record + 4, 32);
+		ap.ssid[32] = '\0';
 		memcpy(ap.bssid, record + 37, sizeof(ap.bssid));
 		ap.channel = (int32_t)sys_get_le32(record + 43);
 		ap.security = record[47];
@@ -105,6 +109,36 @@ int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_
 	}
 
 	*ap_count = count;
+
+	return 0;
+}
+
+int emw3080_mipc_get_mac_address(const struct device *dev, uint8_t mac[6])
+{
+	/* Request ID = 1, command ID = 0x0101. */
+	static const uint8_t request[MIPC_HEADER_SIZE] = {0x01, 0x00, 0x00, 0x00, 0x01, 0x01};
+
+	uint8_t response[MIPC_HEADER_SIZE + MIPC_MAC_SIZE] = {0};
+	size_t response_len;
+	int ret;
+
+	ret = emw3080_transport_send(dev, request, sizeof(request));
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len,
+					MIPC_GET_MAC_TIMEOUT_MS);
+	if (ret < 0) {
+		return ret;
+	}
+
+	/* Verify response size, request ID and command ID. */
+	if (response_len != sizeof(response) || memcmp(response, request, MIPC_HEADER_SIZE) != 0) {
+		return -EBADMSG;
+	}
+
+	memcpy(mac, response + MIPC_HEADER_SIZE, MIPC_MAC_SIZE);
 
 	return 0;
 }

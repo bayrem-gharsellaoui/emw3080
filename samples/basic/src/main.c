@@ -32,6 +32,17 @@ int main(void)
 		LOG_ERR("Failed to read firmware version: %d", ret);
 	}
 
+	uint8_t mac[6] = {0};
+
+	ret = emw3080_get_mac_address(wifi, mac);
+
+	if (ret == 0) {
+		LOG_INF("MAC address: %02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2],
+			mac[3], mac[4], mac[5]);
+	} else {
+		LOG_ERR("Failed to read MAC address: %d", ret);
+	}
+
 	uint8_t ap_count = 0;
 
 	LOG_INF("Scanning for Wi-Fi networks...");

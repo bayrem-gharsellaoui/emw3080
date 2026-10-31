@@ -23,4 +23,6 @@ typedef void (*emw3080_scan_cb_t)(const struct emw3080_ap_info *ap, void *user_d
 int emw3080_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_cb_t callback,
 		 void *user_data);
 
+int emw3080_get_mac_address(const struct device *dev, uint8_t mac[6]);
+
 #endif /* ZEPHYR_DRIVERS_WIFI_EMW3080_H_ */
