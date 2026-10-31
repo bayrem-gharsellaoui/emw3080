@@ -18,7 +18,7 @@ LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 #define SPI_HEADER_SIZE 8
 #define SPI_WRITE_TYPE  0x0A
 #define SPI_READ_TYPE   0x0B
-#define SPI_MAX_PAYLOAD 256
+#define SPI_MAX_PAYLOAD 2500
 
 struct emw3080_config {
 	struct spi_dt_spec spi;
@@ -78,11 +78,11 @@ static int wait_for_flow(const struct device *dev)
 	return 0;
 }
 
-static int wait_for_notify(const struct device *dev)
+static int wait_for_notify(const struct device *dev, uint32_t timeout_ms)
 {
 	const struct emw3080_config *cfg = dev->config;
 	struct emw3080_data *data = dev->data;
-	int64_t deadline = k_uptime_get() + 2000;
+	int64_t deadline = k_uptime_get() + timeout_ms;
 
 	while (true) {
 		int ret = gpio_pin_get_dt(&cfg->notify);
@@ -101,7 +101,7 @@ static int wait_for_notify(const struct device *dev)
 			return -ETIMEDOUT;
 		}
 
-		ret = k_sem_take(&data->notify_sem, K_MSEC(remaining));
+		ret = k_sem_take(&data->notify_sem, K_MSEC((int32_t)remaining));
 		if (ret < 0) {
 			return ret == -EAGAIN ? -ETIMEDOUT : ret;
 		}
@@ -179,6 +179,7 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 	received_inv = (uint16_t)reply[3] | ((uint16_t)reply[4] << 8);
 
 	if (reply[0] != SPI_READ_TYPE || (uint16_t)(received_len ^ received_inv) != UINT16_MAX) {
+		LOG_HEXDUMP_ERR(reply, sizeof(reply), "Invalid SPI header");
 		ret = -EBADMSG;
 		goto out;
 	}
@@ -242,9 +243,10 @@ int emw3080_transport_send(const struct device *dev, const uint8_t *buf, size_t 
 	return spi_message(dev, buf, len, NULL, 0, NULL);
 }
 
-int emw3080_transport_receive(const struct device *dev, uint8_t *buf, size_t size, size_t *len)
+int emw3080_transport_receive(const struct device *dev, uint8_t *buf, size_t size, size_t *len,
+			      uint32_t timeout_ms)
 {
-	int ret = wait_for_notify(dev);
+	int ret = wait_for_notify(dev, timeout_ms);
 
 	if (ret < 0) {
 		return ret;

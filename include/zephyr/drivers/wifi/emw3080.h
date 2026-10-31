@@ -6,9 +6,9 @@
 #ifndef ZEPHYR_DRIVERS_WIFI_EMW3080_H_
 #define ZEPHYR_DRIVERS_WIFI_EMW3080_H_
 
-#include <stddef.h>
 #include <zephyr/device.h>
 
 int emw3080_get_firmware_version(const struct device *dev, char *version, size_t size);
+int emw3080_scan(const struct device *dev, uint8_t *ap_count);
 
 #endif /* ZEPHYR_DRIVERS_WIFI_EMW3080_H_ */

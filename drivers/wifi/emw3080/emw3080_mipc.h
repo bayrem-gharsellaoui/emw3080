@@ -10,5 +10,6 @@
 #include <zephyr/device.h>
 
 int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, size_t size);
+int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count);
 
 #endif /* EMW3080_MIPC_H_ */

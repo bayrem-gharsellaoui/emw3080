@@ -24,6 +24,18 @@ int main(void)
 		LOG_ERR("Failed to read firmware version: %d", ret);
 	}
 
+	LOG_INF("Scanning for Wi-Fi networks...");
+
+	uint8_t ap_count = 0;
+
+	ret = emw3080_scan(wifi, &ap_count);
+
+	if (ret < 0) {
+		LOG_ERR("Wi-Fi scan failed: %d", ret);
+	} else {
+		LOG_INF("Found %u access points", ap_count);
+	}
+
 	while (true) {
 		k_msleep(1000);
 	}
