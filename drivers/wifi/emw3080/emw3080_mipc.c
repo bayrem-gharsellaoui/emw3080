@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2026 Bayrem Gharsellaoui
  * SPDX-License-Identifier: Apache-2.0
@@ -6,6 +7,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
+
 LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 
 #include "emw3080_mipc.h"
@@ -32,12 +34,18 @@ int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, s
 	size_t version_len;
 	int ret;
 
+	emw3080_transport_lock(dev);
+
 	ret = emw3080_transport_send(dev, request, sizeof(request));
 	if (ret < 0) {
-		return ret;
+		goto unlock;
 	}
 
 	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len, 2000);
+
+unlock:
+	emw3080_transport_unlock(dev);
+
 	if (ret < 0) {
 		return ret;
 	}
@@ -68,13 +76,19 @@ int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_
 	size_t response_len;
 	int ret;
 
+	emw3080_transport_lock(dev);
+
 	ret = emw3080_transport_send(dev, request, sizeof(request));
 	if (ret < 0) {
-		return ret;
+		goto unlock;
 	}
 
 	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len,
 					MIPC_SCAN_TIMEOUT_MS);
+
+unlock:
+	emw3080_transport_unlock(dev);
+
 	if (ret < 0) {
 		return ret;
 	}
@@ -95,7 +109,6 @@ int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_
 
 	for (uint8_t i = 0; i < count; i++) {
 		const uint8_t *record = records + i * MIPC_SCAN_AP_SIZE;
-
 		struct emw3080_ap_info ap = {0};
 
 		ap.rssi = (int32_t)sys_get_le32(record);
@@ -122,13 +135,19 @@ int emw3080_mipc_get_mac_address(const struct device *dev, uint8_t mac[6])
 	size_t response_len;
 	int ret;
 
+	emw3080_transport_lock(dev);
+
 	ret = emw3080_transport_send(dev, request, sizeof(request));
 	if (ret < 0) {
-		return ret;
+		goto unlock;
 	}
 
 	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len,
 					MIPC_GET_MAC_TIMEOUT_MS);
+
+unlock:
+	emw3080_transport_unlock(dev);
+
 	if (ret < 0) {
 		return ret;
 	}

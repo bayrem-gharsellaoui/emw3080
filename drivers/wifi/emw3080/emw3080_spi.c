@@ -14,6 +14,7 @@
 LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 
 #include "emw3080_transport.h"
+#include "emw3080_wifi.h"
 
 #define SPI_HEADER_SIZE 8
 #define SPI_WRITE_TYPE  0x0A
@@ -37,7 +38,15 @@ struct emw3080_data {
 	struct k_mutex mutex;
 	uint8_t tx_buffer[SPI_MAX_PAYLOAD];
 	uint8_t rx_buffer[SPI_MAX_PAYLOAD];
+	struct emw3080_wifi_context wifi;
 };
+
+struct emw3080_wifi_context *emw3080_wifi_context_get(const struct device *dev)
+{
+	struct emw3080_data *data = dev->data;
+
+	return &data->wifi;
+}
 
 static void flow_callback(const struct device *port, struct gpio_callback *cb, uint32_t pins)
 {
@@ -342,6 +351,11 @@ static int emw3080_init(const struct device *dev)
 
 	k_msleep(1200);
 
+	ret = emw3080_wifi_init(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
 	LOG_INF("EMW3080 initialized");
 
 	return 0;
@@ -356,7 +370,7 @@ static int emw3080_init(const struct device *dev)
 		.flow = GPIO_DT_SPEC_INST_GET(inst, flow_gpios),                                   \
 		.notify = GPIO_DT_SPEC_INST_GET(inst, notify_gpios),                               \
 	};                                                                                         \
-	DEVICE_DT_INST_DEFINE(inst, emw3080_init, NULL, &data_##inst, &config_##inst, POST_KERNEL, \
-			      CONFIG_EMW3080_INIT_PRIORITY, NULL);
+	NET_DEVICE_DT_INST_OFFLOAD_DEFINE(inst, emw3080_init, NULL, &data_##inst, &config_##inst,  \
+					  CONFIG_WIFI_INIT_PRIORITY, &emw3080_wifi_api, 1500);
 
 DT_INST_FOREACH_STATUS_OKAY(EMW3080_DEFINE)

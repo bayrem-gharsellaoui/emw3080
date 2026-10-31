@@ -5,18 +5,13 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/wifi/emw3080.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 static const struct device *wifi = DEVICE_DT_GET(DT_NODELABEL(emw3080));
-
-static void scan_callback(const struct emw3080_ap_info *ap, void *user_data)
-{
-	LOG_INF("SSID: %-32s | RSSI: %ld dBm | Channel: %ld | "
-		"BSSID: %02x:%02x:%02x:%02x:%02x:%02x | Security: %u",
-		ap->ssid, (long)ap->rssi, (long)ap->channel, ap->bssid[0], ap->bssid[1],
-		ap->bssid[2], ap->bssid[3], ap->bssid[4], ap->bssid[5], ap->security);
-}
 
 int main(void)
 {
@@ -43,16 +38,17 @@ int main(void)
 		LOG_ERR("Failed to read MAC address: %d", ret);
 	}
 
-	uint8_t ap_count = 0;
+	struct net_if *iface = net_if_lookup_by_dev(wifi);
 
-	LOG_INF("Scanning for Wi-Fi networks...");
-
-	ret = emw3080_scan(wifi, &ap_count, scan_callback, NULL);
-
-	if (ret < 0) {
-		LOG_ERR("Wi-Fi scan failed: %d", ret);
+	if (iface == NULL) {
+		LOG_ERR("EMW3080 network interface not found");
 	} else {
-		LOG_INF("Found %u access points", ap_count);
+		LOG_INF("EMW3080 network interface: %d", net_if_get_by_iface(iface));
+	}
+
+	if (iface != NULL) {
+		LOG_INF("Is Wi-Fi interface: %d", net_if_is_wifi(iface));
+		LOG_INF("Interface administratively up: %d", net_if_is_admin_up(iface));
 	}
 
 	while (true) {

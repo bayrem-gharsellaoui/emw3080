@@ -4,7 +4,13 @@
 
 menuconfig EMW3080
 	bool "MXCHIP EMW3080 Wi-Fi driver"
-	depends on SPI && GPIO
+	depends on WIFI
+	depends on DT_HAS_MXCHIP_EMW3080_ENABLED
+	select SPI
+	select GPIO
+	select NET_L2_WIFI_MGMT
+	select WIFI_OFFLOAD
+	select NET_OFFLOAD
 	help
 	  Enable support for the MXCHIP EMW3080 Wi-Fi module.
 

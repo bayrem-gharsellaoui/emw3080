@@ -10,6 +10,16 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/wifi/emw3080.h>
 
+struct emw3080_ap_info {
+	char ssid[34];
+	uint8_t bssid[6];
+	int32_t rssi;
+	int32_t channel;
+	uint8_t security;
+};
+
+typedef void (*emw3080_scan_cb_t)(const struct emw3080_ap_info *ap, void *user_data);
+
 int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, size_t size);
 int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_cb_t callback,
 		      void *user_data);
