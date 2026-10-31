@@ -34,6 +34,9 @@ struct emw3080_data {
 	struct gpio_callback notify_cb;
 	struct k_sem flow_sem;
 	struct k_sem notify_sem;
+	struct k_mutex mutex;
+	uint8_t tx_buffer[SPI_MAX_PAYLOAD];
+	uint8_t rx_buffer[SPI_MAX_PAYLOAD];
 };
 
 static void flow_callback(const struct device *port, struct gpio_callback *cb, uint32_t pins)
@@ -125,10 +128,7 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 					   0,
 					   0,
 					   0};
-	uint8_t reply[SPI_HEADER_SIZE];
-	uint8_t tx_buffer[SPI_MAX_PAYLOAD] = {0};
-	uint8_t rx_buffer[SPI_MAX_PAYLOAD];
-
+	uint8_t reply[SPI_HEADER_SIZE] = {0};
 	uint16_t received_len;
 	uint16_t received_inv;
 	size_t payload_len;
@@ -171,20 +171,20 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 	payload_len = MAX(tx_len, received_len);
 
 	if (payload_len > 0) {
-		memcpy(tx_buffer, tx, tx_len);
+		memcpy(data->tx_buffer, tx, tx_len);
 
 		ret = wait_for_flow(dev);
 		if (ret < 0) {
 			goto out;
 		}
 
-		ret = spi_exchange(dev, tx_buffer, rx_buffer, payload_len);
+		ret = spi_exchange(dev, data->tx_buffer, data->rx_buffer, payload_len);
 		if (ret < 0) {
 			goto out;
 		}
 
 		if (received_len > 0) {
-			memcpy(rx, rx_buffer, received_len);
+			memcpy(rx, data->rx_buffer, received_len);
 		}
 	}
 
@@ -223,6 +223,20 @@ int emw3080_transport_receive(const struct device *dev, uint8_t *buf, size_t siz
 	return spi_message(dev, NULL, 0, buf, size, len);
 }
 
+int emw3080_transport_lock(const struct device *dev)
+{
+	struct emw3080_data *data = dev->data;
+
+	return k_mutex_lock(&data->mutex, K_FOREVER);
+}
+
+void emw3080_transport_unlock(const struct device *dev)
+{
+	struct emw3080_data *data = dev->data;
+
+	k_mutex_unlock(&data->mutex);
+}
+
 static int emw3080_init(const struct device *dev)
 {
 	const struct emw3080_config *cfg = dev->config;
@@ -237,6 +251,7 @@ static int emw3080_init(const struct device *dev)
 
 	k_sem_init(&data->flow_sem, 0, 2);
 	k_sem_init(&data->notify_sem, 0, 1);
+	k_mutex_init(&data->mutex);
 
 	/* CS must be asserted before waiting for FLOW. */
 	data->spi_config = cfg->spi.config;

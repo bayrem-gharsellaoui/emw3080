@@ -13,6 +13,8 @@ LOG_MODULE_REGISTER(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 
 int emw3080_get_firmware_version(const struct device *dev, char *version, size_t size)
 {
+	int ret;
+
 	if (dev == NULL || version == NULL || size == 0) {
 		return -EINVAL;
 	}
@@ -21,5 +23,14 @@ int emw3080_get_firmware_version(const struct device *dev, char *version, size_t
 		return -ENODEV;
 	}
 
-	return emw3080_mipc_get_firmware_version(dev, version, size);
+	ret = emw3080_transport_lock(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = emw3080_mipc_get_firmware_version(dev, version, size);
+
+	emw3080_transport_unlock(dev);
+
+	return ret;
 }
