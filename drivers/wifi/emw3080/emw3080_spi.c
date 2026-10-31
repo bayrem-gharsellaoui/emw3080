@@ -57,35 +57,56 @@ static int wait_for_flow(const struct device *dev)
 {
 	const struct emw3080_config *cfg = dev->config;
 	struct emw3080_data *data = dev->data;
+	int ret;
 
-	int ret = k_sem_take(&data->flow_sem, K_MSEC(500));
+	ret = k_sem_take(&data->flow_sem, K_MSEC(500));
 	if (ret < 0) {
+		LOG_ERR("FLOW wait failed: %d", ret);
 		return ret;
 	}
 
 	ret = gpio_pin_get_dt(&cfg->flow);
-	return ret < 0 ? ret : (ret ? 0 : -EIO);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (ret == 0) {
+		LOG_ERR("FLOW is no longer active");
+		return -EIO;
+	}
+
+	return 0;
 }
 
 static int wait_for_notify(const struct device *dev)
 {
 	const struct emw3080_config *cfg = dev->config;
 	struct emw3080_data *data = dev->data;
+	int64_t deadline = k_uptime_get() + 2000;
 
-	int ret = gpio_pin_get_dt(&cfg->notify);
-	if (ret < 0) {
-		return ret;
-	}
+	while (true) {
+		int ret = gpio_pin_get_dt(&cfg->notify);
 
-	if (ret == 0) {
-		ret = k_sem_take(&data->notify_sem, K_MSEC(2000));
 		if (ret < 0) {
 			return ret;
 		}
-	}
 
-	ret = gpio_pin_get_dt(&cfg->notify);
-	return ret < 0 ? ret : (ret ? 0 : -EIO);
+		if (ret > 0) {
+			return 0;
+		}
+
+		int64_t remaining = deadline - k_uptime_get();
+
+		if (remaining <= 0) {
+			return -ETIMEDOUT;
+		}
+
+		ret = k_sem_take(&data->notify_sem,
+				 K_MSEC(remaining));
+		if (ret < 0) {
+			return ret == -EAGAIN ? -ETIMEDOUT : ret;
+		}
+	}
 }
 
 static int spi_exchange(const struct device *dev, const uint8_t *tx, uint8_t *rx, size_t len)
@@ -192,13 +213,23 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 		*rx_len = received_len;
 	}
 
-out: {
-	int cs_ret = gpio_pin_set_dt(&cfg->cs, 0);
+out:
+	/* Always release CS, including after a failed transfer. */
+	{
+		int cs_ret = gpio_pin_set_dt(&cfg->cs, 0);
 
-	if (ret == 0) {
-		ret = cs_ret;
+		if (cs_ret < 0) {
+			LOG_ERR("Failed to release SPI CS: %d", cs_ret);
+
+			if (ret == 0) {
+				ret = cs_ret;
+			}
+		}
 	}
-}
+
+	if (ret < 0) {
+		LOG_ERR("SPI transaction failed: %d", ret);
+	}
 
 	return ret;
 }
