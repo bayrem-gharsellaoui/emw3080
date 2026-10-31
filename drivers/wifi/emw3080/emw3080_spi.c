@@ -101,8 +101,7 @@ static int wait_for_notify(const struct device *dev)
 			return -ETIMEDOUT;
 		}
 
-		ret = k_sem_take(&data->notify_sem,
-				 K_MSEC(remaining));
+		ret = k_sem_take(&data->notify_sem, K_MSEC(remaining));
 		if (ret < 0) {
 			return ret == -EAGAIN ? -ETIMEDOUT : ret;
 		}
