@@ -1,0 +1,5 @@
+drivers/wifi/emw3080/CMakeLists.txt
+drivers/wifi/emw3080/Kconfig
+drivers/wifi/emw3080/emw3080.c
+drivers/wifi/emw3080/emw3080.h
+drivers/wifi/emw3080/emw3080_spi.c
