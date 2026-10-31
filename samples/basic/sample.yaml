@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Bayrem Gharsellaoui
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: emw3080
+  description: Basic emw3080 sample
+
+common:
+  tags:
+    - emw3080
+    - ipc
+
+tests:
+  sample.emw3080.basic:
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

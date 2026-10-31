@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Bayrem Gharsellaoui
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig EMW3080
+    bool "EMW3080 device driver"
+    help
+      This option enables the emw3080 custom driver class.
+
+if EMW3080
+
+config EMW3080_LOG_LEVEL
+    int "EMW3080 log level"
+    depends on EMW3080
+    range 0 4
+    default 3
+    help
+      Log level for the EMW3080 driver (0=off, 1=error, 2=warning, 3=info, 4=debug).
+
+config EMW3080_INIT_PRIORITY
+    int "EMW3080 device drivers init priority"
+    default 60
+    help
+      EMW3080 device drivers init priority.
+
+module = EMW3080
+module-str = emw3080
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # EMW3080

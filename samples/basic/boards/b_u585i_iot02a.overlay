@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2026 Bayrem Gharsellaoui
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&usart1 {
+	current-speed = <2000000>;
+	status = "okay";
+};
+
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pd1 &spi2_miso_pd3 &spi2_mosi_pd4>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	emw3080: wifi@0 {
+		compatible = "mxchip,emw3080";
+		reg = <0>;
+		spi-max-frequency = <1000000>;
+
+		enable-gpios = <&gpiof 15 GPIO_ACTIVE_HIGH>;
+		flow-gpios = <&gpiog 15 GPIO_ACTIVE_HIGH>;
+		notify-gpios = <&gpiod 14 GPIO_ACTIVE_HIGH>;
+
+		status = "okay";
+	};
+};

@@ -1,0 +1,30 @@
+# Copyright (c) 2026 Bayrem Gharsellaoui
+# SPDX-License-Identifier: Apache-2.0
+
+manifest:
+  version: "1.2"
+
+  defaults:
+    remote: zephyrproject
+
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+
+    - name: bayrem
+      url-base: https://github.com/bayrem-gharsellaoui
+
+  projects:
+    - name: zephyr
+      repo-path: zephyr
+      remote: bayrem
+      revision: wifi-emw3080
+      path: zephyr
+      west-commands: scripts/west-commands.yml
+      import:
+        name-allowlist:
+          - cmsis_6
+          - hal_stm32
+
+  self:
+    path: emw3080

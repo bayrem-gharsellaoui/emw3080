@@ -1,5 +1,24 @@
-drivers/wifi/emw3080/CMakeLists.txt
-drivers/wifi/emw3080/Kconfig
-drivers/wifi/emw3080/emw3080.c
-drivers/wifi/emw3080/emw3080.h
-drivers/wifi/emw3080/emw3080_spi.c
+# Copyright (c) 2026 Bayrem Gharsellaoui
+# SPDX-License-Identifier: Apache-2.0
+
+description: MXCHIP EMW3080 Wi-Fi module
+
+compatible: "mxchip,emw3080"
+
+include: spi-device.yaml
+
+properties:
+  enable-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO used to enable the Wi-Fi module.
+
+  flow-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO indicating the module is ready for an SPI transfer.
+
+  notify-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO indicating the module has data available.
