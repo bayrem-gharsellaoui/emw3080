@@ -6,3 +6,5 @@ name: emw3080
 build:
   cmake: .
   kconfig: Kconfig
+  settings:
+    dts_root: .

@@ -1,18 +1,23 @@
 # Copyright (c) 2026 Bayrem Gharsellaoui
 # SPDX-License-Identifier: Apache-2.0
 
-sample:
-  name: emw3080
-  description: Basic emw3080 sample
 
-common:
-  tags:
-    - emw3080
-    - ipc
+# Copyright (c) 2026 Bayrem Gharsellaoui
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: EMW3080 basic sample
+  description: Basic bring-up sample for the MXCHIP EMW3080 module
 
 tests:
   sample.emw3080.basic:
+    tags:
+      - wifi
+      - emw3080
     platform_allow:
+      - b_u585i_iot02a
       - native_sim
     integration_platforms:
+      - b_u585i_iot02a
       - native_sim
+
