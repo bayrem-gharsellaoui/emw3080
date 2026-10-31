@@ -35,11 +35,12 @@ int emw3080_get_firmware_version(const struct device *dev, char *version, size_t
 	return ret;
 }
 
-int emw3080_scan(const struct device *dev, uint8_t *ap_count)
+int emw3080_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_cb_t callback,
+		 void *user_data)
 {
 	int ret;
 
-	if (dev == NULL || ap_count == NULL) {
+	if (dev == NULL || ap_count == NULL || callback == NULL) {
 		return -EINVAL;
 	}
 
@@ -52,7 +53,7 @@ int emw3080_scan(const struct device *dev, uint8_t *ap_count)
 		return ret;
 	}
 
-	ret = emw3080_mipc_scan(dev, ap_count);
+	ret = emw3080_mipc_scan(dev, ap_count, callback, user_data);
 
 	emw3080_transport_unlock(dev);
 

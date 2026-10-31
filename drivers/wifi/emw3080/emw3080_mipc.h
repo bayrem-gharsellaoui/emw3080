@@ -8,8 +8,10 @@
 
 #include <stddef.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/wifi/emw3080.h>
 
 int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, size_t size);
-int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count);
+int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_cb_t callback,
+		      void *user_data);
 
 #endif /* EMW3080_MIPC_H_ */

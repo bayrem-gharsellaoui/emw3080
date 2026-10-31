@@ -4,6 +4,7 @@
  */
 
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 
@@ -54,13 +55,13 @@ int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, s
 	return 0;
 }
 
-int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count)
+int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count, emw3080_scan_cb_t callback,
+		      void *user_data)
 {
-	/* Request ID = 1, command ID = 0x0102, empty SSID. */
-	const uint8_t request[MIPC_HEADER_SIZE + 33] = {0x01, 0x00, 0x00, 0x00, 0x02, 0x01};
+	/* Request ID = 1, scan command = 0x0102, empty SSID. */
+	static const uint8_t request[MIPC_HEADER_SIZE + 33] = {0x01, 0x00, 0x00, 0x00, 0x02, 0x01};
 
-	/* Temporary shared buffer for our single-device bring-up. */
-	static uint8_t response[MIPC_SCAN_BUFFER_SIZE] = {0};
+	static uint8_t response[MIPC_SCAN_BUFFER_SIZE];
 	size_t response_len;
 	int ret;
 
@@ -71,13 +72,10 @@ int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count)
 
 	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len,
 					MIPC_SCAN_TIMEOUT_MS);
-	LOG_INF("Scan response length: %zu", response_len);
-	LOG_HEXDUMP_INF(response, MIN(response_len, 64), "Scan response:");
 	if (ret < 0) {
 		return ret;
 	}
 
-	/* MIPC header + one byte for AP count. */
 	if (response_len < MIPC_HEADER_SIZE + 1 ||
 	    memcmp(response, request, MIPC_HEADER_SIZE) != 0) {
 		return -EBADMSG;
@@ -86,9 +84,24 @@ int emw3080_mipc_scan(const struct device *dev, uint8_t *ap_count)
 	uint8_t count = response[MIPC_HEADER_SIZE];
 	size_t records_len = response_len - MIPC_HEADER_SIZE - 1;
 
-	/* Confirm the response contains all reported AP records. */
 	if (records_len != (size_t)count * MIPC_SCAN_AP_SIZE) {
 		return -EBADMSG;
+	}
+
+	const uint8_t *records = response + MIPC_HEADER_SIZE + 1;
+
+	for (uint8_t i = 0; i < count; i++) {
+		const uint8_t *record = records + i * MIPC_SCAN_AP_SIZE;
+
+		struct emw3080_ap_info ap = {0};
+
+		ap.rssi = (int32_t)sys_get_le32(record);
+		memcpy(ap.ssid, record + 4, 33);
+		memcpy(ap.bssid, record + 37, sizeof(ap.bssid));
+		ap.channel = (int32_t)sys_get_le32(record + 43);
+		ap.security = record[47];
+
+		callback(&ap, user_data);
 	}
 
 	*ap_count = count;

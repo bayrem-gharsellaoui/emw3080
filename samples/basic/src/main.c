@@ -10,6 +10,14 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 static const struct device *wifi = DEVICE_DT_GET(DT_NODELABEL(emw3080));
 
+static void scan_callback(const struct emw3080_ap_info *ap, void *user_data)
+{
+	LOG_INF("SSID: %-32s | RSSI: %ld dBm | Channel: %ld | "
+		"BSSID: %02x:%02x:%02x:%02x:%02x:%02x | Security: %u",
+		ap->ssid, (long)ap->rssi, (long)ap->channel, ap->bssid[0], ap->bssid[1],
+		ap->bssid[2], ap->bssid[3], ap->bssid[4], ap->bssid[5], ap->security);
+}
+
 int main(void)
 {
 	LOG_INF("Started main...");
@@ -24,11 +32,11 @@ int main(void)
 		LOG_ERR("Failed to read firmware version: %d", ret);
 	}
 
-	LOG_INF("Scanning for Wi-Fi networks...");
-
 	uint8_t ap_count = 0;
 
-	ret = emw3080_scan(wifi, &ap_count);
+	LOG_INF("Scanning for Wi-Fi networks...");
+
+	ret = emw3080_scan(wifi, &ap_count, scan_callback, NULL);
 
 	if (ret < 0) {
 		LOG_ERR("Wi-Fi scan failed: %d", ret);
