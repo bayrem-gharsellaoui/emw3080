@@ -26,6 +26,13 @@ struct emw3080_wifi_context {
 	atomic_t scan_busy;
 
 	uint8_t mac[WIFI_MAC_ADDR_LEN];
+
+	struct k_work connect_work;
+	atomic_t connect_busy;
+	struct net_if *connect_iface;
+
+	char ssid[33];
+	char password[65];
 };
 
 struct emw3080_wifi_context *emw3080_wifi_context_get(const struct device *dev);

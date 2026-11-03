@@ -16,22 +16,23 @@ LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 static struct net_offload emw3080_offload;
 
 /* Translate the module security type to Zephyr. */
+
 static enum wifi_security_type emw3080_security_to_zephyr(uint8_t security)
 {
 	switch (security) {
-	case 0:
+	case EMW3080_SECURITY_NONE:
 		return WIFI_SECURITY_TYPE_NONE;
 
-	case 1:
+	case EMW3080_SECURITY_WEP:
 		return WIFI_SECURITY_TYPE_WEP;
 
-	case 2:
-	case 3:
+	case EMW3080_SECURITY_WPA_TKIP:
+	case EMW3080_SECURITY_WPA_AES:
 		return WIFI_SECURITY_TYPE_WPA_PSK;
 
-	case 4:
-	case 5:
-	case 6:
+	case EMW3080_SECURITY_WPA2_TKIP:
+	case EMW3080_SECURITY_WPA2_AES:
+	case EMW3080_SECURITY_WPA2_MIXED:
 		return WIFI_SECURITY_TYPE_PSK;
 
 	default:
@@ -108,6 +109,111 @@ static int emw3080_wifi_scan(const struct device *dev, struct net_if *iface,
 	return 0;
 }
 
+static void emw3080_connect_work_handler(struct k_work *work)
+{
+	struct emw3080_wifi_context *ctx =
+		CONTAINER_OF(work, struct emw3080_wifi_context, connect_work);
+
+	int ret = emw3080_mipc_connect(ctx->dev, ctx->ssid, ctx->password);
+
+	memset(ctx->password, 0, sizeof(ctx->password));
+
+	LOG_INF("Wi-Fi connection result: %d", ret);
+
+	wifi_mgmt_raise_connect_result_event(ctx->connect_iface, ret);
+
+	atomic_clear(&ctx->connect_busy);
+}
+
+static int emw3080_wifi_connect(const struct device *dev, struct net_if *iface,
+				struct wifi_connect_req_params *params)
+{
+	struct emw3080_wifi_context *ctx = emw3080_wifi_context_get(dev);
+
+	if (params == NULL || iface == NULL || params->ssid == NULL || params->ssid_length == 0 ||
+	    params->ssid_length > 32) {
+		return -EINVAL;
+	}
+
+	/* Initially support only open and WPA2-PSK networks. */
+	if (params->security != WIFI_SECURITY_TYPE_NONE &&
+	    params->security != WIFI_SECURITY_TYPE_PSK) {
+		return -ENOTSUP;
+	}
+
+	if (params->security == WIFI_SECURITY_TYPE_PSK &&
+	    (params->psk == NULL || params->psk_length < 8 || params->psk_length > 63)) {
+		return -EINVAL;
+	}
+
+	if (!atomic_cas(&ctx->connect_busy, 0, 1)) {
+		return -EBUSY;
+	}
+
+	memcpy(ctx->ssid, params->ssid, params->ssid_length);
+	ctx->ssid[params->ssid_length] = '\0';
+
+	size_t password_len = params->security == WIFI_SECURITY_TYPE_NONE ? 0 : params->psk_length;
+
+	if (password_len > 0) {
+		memcpy(ctx->password, params->psk, password_len);
+	}
+	ctx->password[password_len] = '\0';
+
+	ctx->connect_iface = iface;
+
+	int ret = k_work_submit_to_queue(&ctx->work_queue, &ctx->connect_work);
+
+	if (ret <= 0) {
+		memset(ctx->password, 0, sizeof(ctx->password));
+		atomic_clear(&ctx->connect_busy);
+		return ret < 0 ? ret : -EBUSY;
+	}
+
+	return 0;
+}
+
+static int emw3080_wifi_iface_status(const struct device *dev, struct net_if *iface,
+				     struct wifi_iface_status *status)
+{
+	struct emw3080_link_info info;
+	int ret;
+
+	ARG_UNUSED(iface);
+
+	if (status == NULL) {
+		return -EINVAL;
+	}
+
+	memset(status, 0, sizeof(*status));
+
+	ret = emw3080_mipc_get_link_info(dev, &info);
+	if (ret < 0) {
+		return ret;
+	}
+
+	status->iface_mode = WIFI_MODE_INFRA;
+
+	if (!info.connected) {
+		status->state = WIFI_STATE_DISCONNECTED;
+		return 0;
+	}
+
+	status->state = WIFI_STATE_COMPLETED;
+	status->ssid_len = strnlen(info.ssid, 32);
+
+	memcpy(status->ssid, info.ssid, status->ssid_len);
+	memcpy(status->bssid, info.bssid, sizeof(info.bssid));
+
+	status->band = WIFI_FREQ_BAND_2_4_GHZ;
+	status->channel = info.channel;
+	status->rssi = info.rssi;
+	status->security = emw3080_security_to_zephyr(info.security);
+	status->link_mode = WIFI_LINK_MODE_UNKNOWN;
+
+	return 0;
+}
+
 /* Configure the network interface with the real module MAC. */
 static void emw3080_iface_init(struct net_if *iface)
 {
@@ -135,6 +241,8 @@ static enum offloaded_net_if_types emw3080_get_type(void)
 
 static const struct wifi_mgmt_ops emw3080_mgmt_ops = {
 	.scan = emw3080_wifi_scan,
+	.connect = emw3080_wifi_connect,
+	.iface_status = emw3080_wifi_iface_status,
 };
 
 const struct net_wifi_mgmt_offload emw3080_wifi_api = {
@@ -151,6 +259,9 @@ int emw3080_wifi_init(const struct device *dev)
 
 	atomic_clear(&ctx->scan_busy);
 	k_work_init(&ctx->scan_work, emw3080_scan_work_handler);
+
+	atomic_clear(&ctx->connect_busy);
+	k_work_init(&ctx->connect_work, emw3080_connect_work_handler);
 
 	k_work_queue_start(&ctx->work_queue, ctx->work_stack,
 			   K_KERNEL_STACK_SIZEOF(ctx->work_stack), 5, NULL);

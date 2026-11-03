@@ -143,8 +143,8 @@ static int spi_exchange(const struct device *dev, const uint8_t *tx, uint8_t *rx
 			      rx != NULL ? &rx_set : NULL);
 }
 
-static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_len, uint8_t *rx,
-		       size_t rx_size, size_t *rx_len)
+static int spi_transaction(const struct device *dev, const uint8_t *tx, size_t tx_len, uint8_t *rx,
+			   size_t rx_size, size_t *rx_len)
 {
 	const struct emw3080_config *cfg = dev->config;
 	struct emw3080_data *data = dev->data;
@@ -169,23 +169,30 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 
 	k_sem_reset(&data->flow_sem);
 
+	/* 1. Assert CS */
 	ret = gpio_pin_set_dt(&cfg->cs, 1);
 	if (ret < 0) {
 		return ret;
 	}
 
+	/* 2. Wait for FLOW */
+	LOG_DBG("Waiting for FLOW: header");
 	ret = wait_for_flow(dev);
 	if (ret < 0) {
 		goto out;
 	}
 
+	/* 3. Exchange headers */
 	ret = spi_exchange(dev, header, reply, sizeof(header));
 	if (ret < 0) {
 		goto out;
 	}
 
+	/* 4. Determine TX and RX lengths */
 	received_len = (uint16_t)reply[1] | ((uint16_t)reply[2] << 8);
 	received_inv = (uint16_t)reply[3] | ((uint16_t)reply[4] << 8);
+	LOG_DBG("SPI header: TX=%zu RX=%u RX_INV=0x%04x type=0x%02x", tx_len, received_len,
+		received_inv, reply[0]);
 
 	if (reply[0] != SPI_READ_TYPE || (uint16_t)(received_len ^ received_inv) != UINT16_MAX) {
 		LOG_HEXDUMP_ERR(reply, sizeof(reply), "Invalid SPI header");
@@ -193,7 +200,7 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 		goto out;
 	}
 
-	if (received_len > SPI_MAX_PAYLOAD || received_len > rx_size) {
+	if (received_len > SPI_MAX_PAYLOAD || (rx != NULL && received_len > rx_size)) {
 		ret = -EMSGSIZE;
 		goto out;
 	}
@@ -201,20 +208,40 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 	payload_len = MAX(tx_len, received_len);
 
 	if (payload_len > 0) {
-		memcpy(data->tx_buffer, tx, tx_len);
+		memset(data->tx_buffer, 0, payload_len);
 
+		if (tx_len > 0) {
+			memcpy(data->tx_buffer, tx, tx_len);
+		}
+
+		/* 5. Wait for FLOW again */
+		LOG_DBG("Waiting for FLOW: payload (%zu bytes)", payload_len);
 		ret = wait_for_flow(dev);
 		if (ret < 0) {
 			goto out;
 		}
 
+		/* 6. Exchange payloads */
 		ret = spi_exchange(dev, data->tx_buffer, data->rx_buffer, payload_len);
 		if (ret < 0) {
 			goto out;
 		}
 
-		if (received_len > 0) {
+		if (received_len == 7 && rx == NULL) {
+			LOG_HEXDUMP_DBG(data->rx_buffer, received_len, "Unsolicited MIPC packet");
+		}
+
+		if (received_len > 0 && rx == NULL) {
+			LOG_WRN("Unexpected %u-byte message during SPI write", received_len);
+		}
+
+		if ((received_len > 0) && (rx != NULL)) {
 			memcpy(rx, data->rx_buffer, received_len);
+		}
+
+		if (received_len == 7) {
+			LOG_HEXDUMP_DBG(data->rx_buffer, received_len,
+					"7-byte incoming MIPC packet");
 		}
 	}
 
@@ -225,6 +252,7 @@ static int spi_message(const struct device *dev, const uint8_t *tx, size_t tx_le
 out:
 	/* Always release CS, including after a failed transfer. */
 	{
+		/* 7. Release CS */
 		int cs_ret = gpio_pin_set_dt(&cfg->cs, 0);
 
 		if (cs_ret < 0) {
@@ -249,7 +277,7 @@ int emw3080_transport_send(const struct device *dev, const uint8_t *buf, size_t 
 
 	k_sem_reset(&data->notify_sem);
 
-	return spi_message(dev, buf, len, NULL, 0, NULL);
+	return spi_transaction(dev, buf, len, NULL, 0, NULL);
 }
 
 int emw3080_transport_receive(const struct device *dev, uint8_t *buf, size_t size, size_t *len,
@@ -261,7 +289,7 @@ int emw3080_transport_receive(const struct device *dev, uint8_t *buf, size_t siz
 		return ret;
 	}
 
-	return spi_message(dev, NULL, 0, buf, size, len);
+	return spi_transaction(dev, NULL, 0, buf, size, len);
 }
 
 int emw3080_transport_lock(const struct device *dev)

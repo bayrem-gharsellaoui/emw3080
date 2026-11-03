@@ -24,6 +24,24 @@ LOG_MODULE_DECLARE(emw3080, CONFIG_EMW3080_LOG_LEVEL);
 #define MIPC_GET_MAC_TIMEOUT_MS 2000
 #define MIPC_MAC_SIZE           6
 
+#define MIPC_CONNECT_TIMEOUT_MS     15000
+#define MIPC_CONNECT_REQUEST_SIZE   182
+#define MIPC_CONNECT_SSID_OFFSET    6
+#define MIPC_CONNECT_KEY_OFFSET     39
+#define MIPC_CONNECT_KEY_LEN_OFFSET 104
+
+#define MIPC_GET_LINK_INFO_TIMEOUT_MS    2000
+#define MIPC_GET_LINK_INFO_RESPONSE_SIZE 130
+
+static void emw3080_secure_clear(void *buf, size_t len)
+{
+	volatile uint8_t *p = buf;
+
+	while (len-- > 0) {
+		*p++ = 0;
+	}
+}
+
 int emw3080_mipc_get_firmware_version(const struct device *dev, char *version, size_t size)
 {
 	/* Request ID = 1, command ID = 0x0003 */
@@ -160,4 +178,119 @@ unlock:
 	memcpy(mac, response + MIPC_HEADER_SIZE, MIPC_MAC_SIZE);
 
 	return 0;
+}
+
+int emw3080_mipc_connect(const struct device *dev, const char *ssid, const char *password)
+{
+	uint8_t request[MIPC_CONNECT_REQUEST_SIZE] = {0x01, 0x00, 0x00, 0x00, 0x03, 0x01};
+	uint8_t response[MIPC_HEADER_SIZE + sizeof(int32_t)] = {0};
+	size_t response_len;
+	size_t ssid_len;
+	size_t password_len;
+	int ret;
+
+	if (ssid == NULL || password == NULL) {
+		return -EINVAL;
+	}
+
+	ssid_len = strnlen(ssid, 33);
+	password_len = strnlen(password, 65);
+
+	if (ssid_len == 0 || ssid_len > 32 || password_len > 64) {
+		return -EINVAL;
+	}
+
+	memcpy(request + MIPC_CONNECT_SSID_OFFSET, ssid, ssid_len);
+	memcpy(request + MIPC_CONNECT_KEY_OFFSET, password, password_len);
+	sys_put_le32(password_len, request + MIPC_CONNECT_KEY_LEN_OFFSET);
+
+	emw3080_transport_lock(dev);
+
+	ret = emw3080_transport_send(dev, request, sizeof(request));
+	if (ret < 0) {
+		goto unlock;
+	}
+
+	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len,
+					MIPC_CONNECT_TIMEOUT_MS);
+
+unlock:
+	emw3080_transport_unlock(dev);
+
+	/* Clear the password from the local request buffer. */
+	memset(request, 0, sizeof(request));
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (response_len != sizeof(response) ||
+	    memcmp(response, (uint8_t[]){0x01, 0x00, 0x00, 0x00, 0x03, 0x01}, MIPC_HEADER_SIZE) !=
+		    0) {
+		return -EBADMSG;
+	}
+
+	int32_t status = (int32_t)sys_get_le32(response + MIPC_HEADER_SIZE);
+
+	return status == 0 ? 0 : -EIO;
+}
+
+int emw3080_mipc_get_link_info(const struct device *dev, struct emw3080_link_info *info)
+{
+	/* Request ID = 1, command ID = 0x0108. */
+	static const uint8_t request[] = {0x01, 0x00, 0x00, 0x00, 0x08, 0x01};
+
+	uint8_t response[MIPC_GET_LINK_INFO_RESPONSE_SIZE] = {0};
+	size_t response_len;
+	int ret;
+
+	if (info == NULL) {
+		return -EINVAL;
+	}
+
+	memset(info, 0, sizeof(*info));
+
+	emw3080_transport_lock(dev);
+
+	ret = emw3080_transport_send(dev, request, sizeof(request));
+	if (ret < 0) {
+		goto unlock;
+	}
+
+	ret = emw3080_transport_receive(dev, response, sizeof(response), &response_len,
+					MIPC_GET_LINK_INFO_TIMEOUT_MS);
+
+unlock:
+	emw3080_transport_unlock(dev);
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (response_len != sizeof(response) || memcmp(response, request, MIPC_HEADER_SIZE) != 0) {
+		ret = -EBADMSG;
+		goto out;
+	}
+
+	if ((int32_t)sys_get_le32(response + 6) != 0) {
+		ret = -EIO;
+		goto out;
+	}
+
+	info->connected = sys_get_le32(response + 10) != 0;
+	info->rssi = (int32_t)sys_get_le32(response + 14);
+
+	memcpy(info->ssid, response + 18, 32);
+	info->ssid[32] = '\0';
+
+	memcpy(info->bssid, response + 51, sizeof(info->bssid));
+	info->channel = (int32_t)sys_get_le32(response + 122);
+	info->security = (uint8_t)sys_get_le32(response + 126);
+
+	ret = 0;
+
+out:
+	/* The response includes credentials that must not remain in memory. */
+	emw3080_secure_clear(response, sizeof(response));
+	return ret;
 }
